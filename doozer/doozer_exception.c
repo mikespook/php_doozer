@@ -11,6 +11,11 @@
 
 zend_class_entry *doozer_exception_ce;
 
+static function_entry doozer_exception_methods[] = {
+    PHP_ME(Doozer, close, NULL, ZEND_ACC_PUBLIC)
+
+}
+
 
 /*
  * Local variables:

@@ -4,7 +4,6 @@ PHP_ARG_ENABLE(doozer, for doozer support,
 PHP_ARG_WITH(protobufc, for protobuf-c support,
 [  --with-protobufc[=DIR]        Include protobuf-c support])
 
-AC_MSG_RESULT($PHP_DOOZER)
 
 if test "$PHP_DOOZER" != "no"; then
     if test -r $PHP_PROTOBUFC/include/google/protobuf-c/protobuf-c.h; then
@@ -22,7 +21,7 @@ if test "$PHP_DOOZER" != "no"; then
 
     if test -z "$PROTOBUF_DIR"; then
         AC_MSG_RESULT(not found)
-        AC_MSG_ERROR(Please reinstall the protobuf-c distribution - protobuf-c.h should be in <protobuf-dir>/include/protobuf-c/)
+        AC_MSG_ERROR(Please reinstall the protobuf-c distribution - protobuf-c.h should be in <protobuf-dir>/include/google/protobuf-c/)
     fi
 
     PHP_ADD_INCLUDE($PROTOBUF_DIR/include)
@@ -30,5 +29,5 @@ if test "$PHP_DOOZER" != "no"; then
     PHP_ADD_LIBRARY_WITH_PATH(protobufc, $PROTOBUF_DIR/$PHP_LIBDIR, DOOZER_SHARED_LIBADD)
 
 dnl TODO: check the protobuf library & headers
-    PHP_NEW_EXTENSION(doozer, doozer.c doozer_exception.c, $ext_shared)
+    PHP_NEW_EXTENSION(doozer, doozer.c, $ext_shared)
 fi

@@ -1,3 +1,6 @@
+#ifndef _CLIENT_H
+#define _CLIENT_H
+
 #include "client.c"
 
 extern int doozer_connect(const char *, unsigned, TIMEOUT, TIMEOUT);
@@ -15,3 +18,4 @@ extern void doozer_walk();
 extern void doozer_hosts();
 extern void doozer_wait();
 */
+#endif /* _CLIENT_H */

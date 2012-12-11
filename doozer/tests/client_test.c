@@ -15,7 +15,19 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
+    Doozer__Request req = DOOZER__REQUEST__INIT;
+    req.tag = 0;
+    req.verb = DOOZER__REQUEST__VERB__NOP;
+    req.path = "/";
+    
+    int len = _doozer_send(doozer, &req);
+    printf("Send length: %d\n", len);        
+
+    Doozer__Response *resp;
+    _doozer_recv(doozer, resp);
+
     doozer_close(doozer);
     printf("%s:%d\n", host, port);
+    
     return EXIT_SUCCESS;
 }

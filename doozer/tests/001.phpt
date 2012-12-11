@@ -7,4 +7,4 @@ Check for doozer presence
 echo doozer_info();
 ?>
 --EXPECT--
-0.1
+Version: 0.1

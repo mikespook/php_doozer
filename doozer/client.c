@@ -4,7 +4,7 @@
 #include <sys/time.h>
 #include <netinet/in.h>
 #include <netdb.h>
-#include <strings.h>
+#include <string.h>
 #include <errno.h>
 
 #include "msg.pb-c.h"
@@ -35,10 +35,9 @@ int doozer_connect(const char *hostname, unsigned port, TIMEOUT rcvtimeo, TIMEOU
     struct hostent *host;
     if ((host = gethostbyname(hostname)) == NULL) {
         return DOOZER_ERR;
-    }
-    bzero((char *) &addr, sizeof(addr));
+    } 
     addr.sin_family = AF_INET;
-    bcopy((char *)host->h_addr, (char *)&addr.sin_addr.s_addr, host->h_length);
+    memcpy((char *)&addr.sin_addr.s_addr, (char *)host->h_addr, host->h_length);
     addr.sin_port = htons(port);
     if (connect(sockfd, (struct sockaddr *)&addr, sizeof(struct sockaddr_in)) == DOOZER_ERR) {
         return DOOZER_ERR;
@@ -67,10 +66,28 @@ int _doozer_send(int sockfd, Doozer__Request *req) {
 }
 
 int _doozer_recv(int sockfd, Doozer__Response *resp) {
-    int len;
-    void *buf;
-    // TODO: an epoll here
-    len = recv(sockfd, buf, BUF_SIZE, 0)
-    resp = doozer__response__unpack(NULL, len, buf);
+    int len, total = 0, done = 0;
+    void *respbuf;
+    while(1) {
+        uint8_t buf[BUF_SIZE];
+        len = recv(sockfd, buf, BUF_SIZE, 0);
+        if (len == -1) {
+            if (errno != EAGAIN) {
+                done = 1;
+            }
+            break;
+        } else if (len == 0){
+            done = 2;
+            break;
+        }
+        void *tmp = malloc(total + len);
+        memcpy(tmp, respbuf, total);
+        respbuf = memcpy(tmp + len, (void *)buf, len);
+        total += len;
+    }
+    resp = doozer__response__unpack(NULL, len, respbuf);
+    free(respbuf);
     return len;
 }
+
+

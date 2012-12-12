@@ -1,5 +1,5 @@
 CC = cc
-CFLAGS = -g -O2
+CFLAGS = -g
 OUTPUT = client_test
 LIB = -lprotobuf-c
 SOURCES = client_test.c ../msg.pb-c.c

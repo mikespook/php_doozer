@@ -6,7 +6,7 @@ int main(int argc, char *argv[]) {
         printf("<HOST> and <PORT> needed.\n");
         return EXIT_FAILURE;
     }
-
+    printf("Connecting...\n");
     int doozer;
     char * host = argv[1];
     unsigned port = atoi(argv[2]);
@@ -14,20 +14,51 @@ int main(int argc, char *argv[]) {
         printf("Error Number: %d\n", doozer_last_errno());
         return EXIT_FAILURE;
     }
-
-    Doozer__Request req = DOOZER__REQUEST__INIT;
-    req.tag = 0;
-    req.verb = DOOZER__REQUEST__VERB__NOP;
-    req.path = "/";
+    int64_t rev = 0;
     
-    int len = _doozer_send(doozer, &req);
-    printf("Send length: %d\n", len);        
+    {
+        printf("Revision\n");
+        int err = doozer_current_revision(doozer, &rev);
+        if (err == DOOZER_ERR) {
+            printf("Error Number: %d\n", doozer_last_errno()); 
+            return EXIT_FAILURE;
+        }
+    }
 
-    Doozer__Response *resp;
-    _doozer_recv(doozer, resp);
+    {
+        printf("Set\n");
+        char * str = "foobar";
+        int err = doozer_set(doozer, "/test", str, strlen(str), &rev);
+        if (err == DOOZER_ERR) {
+            printf("Error Number: %d; Revision: %lld\n", doozer_last_errno(), rev); 
+            return EXIT_FAILURE;
+        }
+        printf("%d:%lld\n", err, rev);
+    }
+
+    {
+        printf("Get\n");
+        size_t len;
+        uint8_t *data;
+        int err = doozer_get(doozer, "/test", rev, &data, &len);
+        if (err == DOOZER_ERR) {
+            printf("Error Number: %d; Revision: %lld\n", doozer_last_errno(), rev); 
+            return EXIT_FAILURE;
+        }
+        printf("%d:%d:%s\n", err, len, data);
+    }
+    
+    {
+        printf("Delete\n");
+        size_t len;
+        int err = doozer_delete(doozer, "/test", rev);
+        if (err == DOOZER_ERR) {
+            printf("Error Number: %d; Revision: %lld\n", doozer_last_errno(), rev); 
+            return EXIT_FAILURE;
+        }
+        printf("%d\n", err);
+    }
 
     doozer_close(doozer);
-    printf("%s:%d\n", host, port);
-    
     return EXIT_SUCCESS;
 }

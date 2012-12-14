@@ -10,6 +10,7 @@
 #include "msg.pb-c.h"
 
 #define DOOZER_ERR -1
+#define DOOZER_SUCCESS 0
 #define DOOZER_SET 2
 #define DOOZER_GET 4
 #define BUF_SIZE 1024
@@ -65,7 +66,7 @@ void doozer_close(int sockfd) {
     close(sockfd);
 }
 
-int doozer_current_revision(int sockfd, int64_t *rev) {
+int doozer_rev(int sockfd, int64_t *rev) {
     Doozer__Request req = DOOZER__REQUEST__INIT;
     req.has_verb = 1; req.verb = DOOZER__REQUEST__VERB__REV;
     Doozer__Response *resp;
@@ -78,7 +79,7 @@ int doozer_current_revision(int sockfd, int64_t *rev) {
         return DOOZER_ERR;
     }
     memcpy(rev, &resp->rev, 8);
-    return 0;
+    return DOOZER_SUCCESS;
 }
 
 int doozer_set(int sockfd, char *path, uint8_t *vdata, size_t vlen, int64_t *rev) {
@@ -89,7 +90,7 @@ int doozer_set(int sockfd, char *path, uint8_t *vdata, size_t vlen, int64_t *rev
     value.len = vlen;
     value.data = vdata;
     req.has_value = 1; req.value = value;
-    req.has_rev = ((*rev != 0) || (rev != NULL)); req.rev = *rev;
+    req.has_rev = 1; req.rev = *rev;
     Doozer__Response *resp;
     int err;
     if ((err = _doozer_invoke(sockfd, &req, &resp)) != 0) {
@@ -100,14 +101,14 @@ int doozer_set(int sockfd, char *path, uint8_t *vdata, size_t vlen, int64_t *rev
         return DOOZER_ERR;
     }
     memcpy(rev, &resp->rev, 8);
-    return 0;   
+    return DOOZER_SUCCESS;   
 }
 
 int doozer_get(int sockfd, char *path, int64_t rev, uint8_t **vdata, size_t *vlen) {
     Doozer__Request req = DOOZER__REQUEST__INIT;
     req.has_verb = 1; req.verb = DOOZER__REQUEST__VERB__GET;
     req.path = path;
-    req.has_rev = (rev != 0); req.rev = rev;
+    req.has_rev = 1; req.rev = rev;
     Doozer__Response *resp;
     int err;
     if ((err = _doozer_invoke(sockfd, &req, &resp)) != 0) {
@@ -121,14 +122,15 @@ int doozer_get(int sockfd, char *path, int64_t rev, uint8_t **vdata, size_t *vle
     } else {
         return DOOZER_ERR;
     }
-    return 0;
+    return DOOZER_SUCCESS;
 }
 
-int doozer_dir(int sockfd, char *path, int64_t rev, int32_t offset, char **subpath) {
+int doozer_dir(int sockfd, char *path, int64_t rev, int32_t offset,
+        char **subpath) {
     Doozer__Request req = DOOZER__REQUEST__INIT;
     req.has_verb = 1; req.verb = DOOZER__REQUEST__VERB__GETDIR;
     req.path = path;
-    req.has_rev = (rev != 0); req.rev = rev;
+    req.has_rev = 1; req.rev = rev;
     req.has_offset = 1; req.offset = offset;
     Doozer__Response *resp;
     int err;
@@ -137,29 +139,26 @@ int doozer_dir(int sockfd, char *path, int64_t rev, int32_t offset, char **subpa
         return DOOZER_ERR;
     }
     *subpath = resp->path;
-    return 0;
+    return DOOZER_SUCCESS;
 }
 
 int doozer_stat(int sockfd, char *path, int64_t *rev, int32_t *len) {
     Doozer__Request req = DOOZER__REQUEST__INIT;
     req.has_verb = 1; req.verb = DOOZER__REQUEST__VERB__STAT;
     req.path = path;
-    req.has_rev = (*rev != 0); req.rev = *rev;
+    req.has_rev = 1; req.rev = *rev;
     Doozer__Response *resp;
     int err;
     if ((err = _doozer_invoke(sockfd, &req, &resp)) != 0) {
         errno = err;
         return DOOZER_ERR;
     }
-    if (!resp->has_rev) {
+    if (!resp->has_rev && !resp->has_len) {
         return DOOZER_ERR;
     }
     memcpy(rev, &resp->rev, 8);
-    if (!resp->has_len) {
-        return DOOZER_ERR;
-    }
-    memcpy(rev, &resp->len, 4);
-    return 0;
+    memcpy(len, &resp->len, 4);
+    return DOOZER_SUCCESS;
 }
 
 
@@ -167,14 +166,14 @@ int doozer_delete(int sockfd, char *path, int64_t rev) {
     Doozer__Request req = DOOZER__REQUEST__INIT;
     req.has_verb = 1; req.verb = DOOZER__REQUEST__VERB__DEL;
     req.path = path;
-    req.has_rev = (rev != 0); req.rev = rev;
+    req.has_rev = 1; req.rev = rev;
     Doozer__Response *resp;
     int err;
     if ((err = _doozer_invoke(sockfd, &req, &resp)) != 0) {
         errno = err;
         return DOOZER_ERR;
     }
-    return 0;
+    return DOOZER_SUCCESS;
 }
 
 int doozer_access(int sockfd, char *token) {
@@ -186,15 +185,15 @@ int doozer_access(int sockfd, char *token) {
         errno = err;
         return DOOZER_ERR;
     }
-    return 0;
+    return DOOZER_SUCCESS;
 }
 
 int doozer_wait(int sockfd, char *path, int64_t *rev, 
-        char **resppath, char **body, size_t *bodylen, char *flag) {
+        char **resppath, uint8_t **body, size_t *bodylen, int32_t *flag) {
     Doozer__Request req = DOOZER__REQUEST__INIT;
     req.has_verb = 1; req.verb = DOOZER__REQUEST__VERB__WAIT;
     req.path = path;
-    req.has_rev = (*rev != 0); req.rev = *rev;
+    req.has_rev = 1; req.rev = *rev;
     Doozer__Response *resp;
     int err;
     if ((err = _doozer_invoke(sockfd, &req, &resp)) != 0) {
@@ -209,38 +208,19 @@ int doozer_wait(int sockfd, char *path, int64_t *rev,
     *bodylen = resp->value.len;
     *body = resp->value.data;
     *flag = resp->flags;
-    return 0;
+    return DOOZER_SUCCESS;
 }
 
-int doozer_walk(int sockfd, char *path, int64_t rev, int32_t offset, 
-        char **Doozer__Response, size_t *len) {
-    rev = (rev == 0) ? doozer_current_revision() : rev;
-    *len = 0
-    for(;;) {
-        Doozer__Request req = DOOZER__REQUEST__INIT;
-        req.has_verb = 1; req.verb = DOOZER__REQUEST__VERB__WALK;
-        req.path = path;
-        req.has_rev = 1; req.rev = rev;
-        req.has_offset = 1; req.offset = offset + *len;
-        req->has_tag = 1; req->tag = 0;
-        if (_doozer_send(sockfd, req) == DOOZER_ERR) {
-            return DOOZER_ERR;
-        }
-        Doozer__Response *resp;
-        if (_doozer_recv(sockfd, resp) ==  DOOZER_ERR) {
-            if (resp->has_err_code) {
-                if ((errcode = resp->err_code) ==
-                        DOOZER__RESPONSE__ERR__RANGE) {
-                    break;
-                } else if (errcode != 0) {
-                    return DOOZER_ERR;
-                }
-            }
-        }
-        // TODO add response to array
-        *len++;
+int doozer_nop(int sockfd) {
+    Doozer__Request req = DOOZER__REQUEST__INIT;
+    req.has_verb = 1; req.verb = DOOZER__REQUEST__VERB__NOP;
+    Doozer__Response *resp;
+    int err;
+    if ((err = _doozer_invoke(sockfd, &req, &resp)) != 0) {
+        errno = err;
+        return DOOZER_ERR;
     }
-    return 0;
+    return DOOZER_SUCCESS;
 }
 
 int _doozer_invoke(int sockfd, Doozer__Request *req, Doozer__Response **resp) {
@@ -254,7 +234,7 @@ int _doozer_invoke(int sockfd, Doozer__Request *req, Doozer__Response **resp) {
     if ((*resp)->has_err_code) {
         return (*resp)->err_code;
     }
-    return 0;
+    return DOOZER_SUCCESS;
 }
 
 int _doozer_send(int sockfd, const Doozer__Request *req) {

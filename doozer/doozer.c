@@ -9,9 +9,11 @@
 #include "msg.pb-c.h"
 
 #define DOOZER_VERSION "0.1"
+#define DOOZER_CLASS_NAME "Doozer"
 
 /* True global resources - no need for thread safety here */
 static int le_doozer;
+static zend_class_entry *doozer_ce_ptr;
 
 /* {{{ doozer_functions[]
 */
@@ -35,7 +37,7 @@ zend_module_entry doozer_module_entry = {
     PHP_RSHUTDOWN(doozer),	/* Replace with NULL if there's nothing to do at request end */
     PHP_MINFO(doozer),
 #if ZEND_MODULE_API_NO >= 20010901
-    "0.1", /* Replace with version number for your extension */
+    DOOZER_VERSION,
 #endif
     STANDARD_MODULE_PROPERTIES
 };
@@ -49,6 +51,9 @@ ZEND_GET_MODULE(doozer)
     */
 PHP_MINIT_FUNCTION(doozer)
 {
+    zend_class_entry doozer_ce;
+    INIT_CLASS_ENTRY(doozer_ce, DOOZER_CLASS_NAME, NULL);
+    doozer_ce_ptr = zend_register_internal_class(&doozer_ce);
     return SUCCESS;
 }
 /* }}} */
@@ -88,13 +93,12 @@ PHP_MINFO_FUNCTION(doozer)
 /* }}} */
 
 
-/* {{{ proto string confirm_doozer_compiled(string arg)
+/* {{{ proto string doozer_info()
    Return a string to confirm that the module is compiled in */
 PHP_FUNCTION(doozer_info)
 {
-    char *info;
-    int len = spprintf(&info, 0, "Version: %s", DOOZER_VERSION);
-    RETURN_STRINGL(info, len, 0);
+    array_init(return_value);
+    add_assoc_string(return_value, "version", DOOZER_VERSION, strlen(DOOZER_VERSION));
 }
 /* }}} */
 

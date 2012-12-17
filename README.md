@@ -7,6 +7,7 @@ Dependencies
 ============
 
 [PHP 5.3.0 and above](http://www.php.net)
+
 [Protobuf-C](http://code.google.com/p/protobuf-c/)
 
 Authors

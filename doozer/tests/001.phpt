@@ -4,7 +4,18 @@ Check for doozer presence
 <?php if (!extension_loaded("doozer")) print "skip"; ?>
 --FILE--
 <?php 
-echo doozer_info();
+if (!class_exists("Doozer")) {
+    exit();
+}
+$doozer = new Doozer('127.0.0.1', 8046, array());
+
+if (!method_exists($doozer, 'getDir')) {
+    exit();    
+}
+$info = doozer_info();
+if (isset($info['version'])) {
+    echo $info['version'];   
+}
 ?>
 --EXPECT--
-Version: 0.1
+0.1

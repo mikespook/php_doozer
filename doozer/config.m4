@@ -28,6 +28,5 @@ if test "$PHP_DOOZER" != "no"; then
     PHP_EVAL_LIBLINE($PROTOBUF_DIR, DOOZER_SHARED_LIBADD)
     PHP_ADD_LIBRARY_WITH_PATH(protobufc, $PROTOBUF_DIR/$PHP_LIBDIR, DOOZER_SHARED_LIBADD)
 
-dnl TODO: check the protobuf library & headers
     PHP_NEW_EXTENSION(doozer, doozer.c, $ext_shared)
 fi

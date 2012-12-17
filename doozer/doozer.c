@@ -6,20 +6,100 @@
 #include "php_ini.h"
 #include "ext/standard/info.h"
 #include "php_doozer.h"
-#include "msg.pb-c.h"
 
 #define DOOZER_VERSION "0.1"
 #define DOOZER_CLASS_NAME "Doozer"
+#define DZ_PP_FD "_fd"
 
 /* True global resources - no need for thread safety here */
 static int le_doozer;
 static zend_class_entry *doozer_ce_ptr;
 
-/* {{{ doozer_functions[]
+/* {{{ proto Doozer::__construct(string $addr, int port, array $params) */
+ZEND_METHOD(doozer, __construct) {
+
+}/* }}} */
+
+/* {{{ proto Doozer::__destruct() */
+ZEND_METHOD(doozer, __destruct) {
+    
+}/* }}} */
+
+/* {{{ proto Doozer::close() */
+ZEND_METHOD(doozer, close) {
+
+}/* }}} */ 
+
+/* {{{ proto Doozer::getRev() */
+ZEND_METHOD(doozer, getRev) {
+
+}/* }}} */ 
+
+/* {{{ proto Doozer::set(string $path, string $value, int $rev=0) */
+ZEND_METHOD(doozer, set) {
+
+}/* }}} */
+
+/* {{{ proto Doozer::get(string $path, int $rev=0) */
+ZEND_METHOD(doozer, get) {
+
+}/* }}} */
+
+/* {{{ proto Doozer::delete(string $path, int $rev=0) */
+ZEND_METHOD(doozer, delete) {
+
+}/* }}} */
+
+/* {{{ proto Doozer::getDir(string $path, int $rev=0, int $offset=0) */
+ZEND_METHOD(doozer, getDir) {
+
+}/* }}} */
+
+/* {{{ proto Doozer::getStat(string $path, int $rev=0) */
+ZEND_METHOD(doozer, getStat) {
+
+}/* }}} */
+
+/* {{{ proto Doozer::access(strilng $path) */
+ZEND_METHOD(doozer, access) {
+
+}/* }}} */
+
+/* {{{ proto Doozer::walk(strinlg $path, int $rev=0, int $offset=0) */
+ZEND_METHOD(doozer, walk) {
+
+}/* }}} */
+
+/* {{{ proto Doozer::getHosts() */
+ZEND_METHOD(doozer, getHosts) {
+
+}/* }}} */
+
+/* {{{ proto Doozer::wait(string $path, int $rev=0) */
+ZEND_METHOD(doozer, wait) {
+
+}/* }}} */
+
+
+
+/* {{{ doozer_methods[]
 */
-const zend_function_entry doozer_functions[] = {
+const zend_function_entry doozer_methods[] = {
+    ZEND_ME(doozer, __construct, NULL, ZEND_ACC_PUBLIC)
+    ZEND_ME(doozer, __destruct, NULL, ZEND_ACC_PUBLIC) 
+    ZEND_ME(doozer, close, NULL, ZEND_ACC_PUBLIC)
+    ZEND_ME(doozer, getRev, NULL, ZEND_ACC_PUBLIC)
+    ZEND_ME(doozer, set, NULL, ZEND_ACC_PUBLIC)
+    ZEND_ME(doozer, get, NULL, ZEND_ACC_PUBLIC)
+    ZEND_ME(doozer, delete, NULL, ZEND_ACC_PUBLIC)
+    ZEND_ME(doozer, getDir, NULL, ZEND_ACC_PUBLIC)
+    ZEND_ME(doozer, getStat, NULL, ZEND_ACC_PUBLIC)
+    ZEND_ME(doozer, access, NULL, ZEND_ACC_PUBLIC)
+    ZEND_ME(doozer, walk, NULL, ZEND_ACC_PUBLIC)
+    ZEND_ME(doozer, getHosts, NULL, ZEND_ACC_PUBLIC)
+    ZEND_ME(doozer, wait, NULL, ZEND_ACC_PUBLIC)
     PHP_FE(doozer_info, NULL)
-    PHP_FE_END	/* Must be the last line in doozer_functions[] */
+    PHP_FE_END
 };
 /* }}} */
 
@@ -30,7 +110,7 @@ zend_module_entry doozer_module_entry = {
     STANDARD_MODULE_HEADER,
 #endif
     "doozer",
-    doozer_functions,
+    doozer_methods,
     PHP_MINIT(doozer),
     PHP_MSHUTDOWN(doozer),
     PHP_RINIT(doozer),		/* Replace with NULL if there's nothing to do at request start */
@@ -54,6 +134,9 @@ PHP_MINIT_FUNCTION(doozer)
     zend_class_entry doozer_ce;
     INIT_CLASS_ENTRY(doozer_ce, DOOZER_CLASS_NAME, NULL);
     doozer_ce_ptr = zend_register_internal_class(&doozer_ce);
+    zend_declare_property_string(doozer_ce_ptr,
+                          "addr", strlen("addr"),
+                          "127.0.0.1", ZEND_ACC_PUBLIC);
     return SUCCESS;
 }
 /* }}} */

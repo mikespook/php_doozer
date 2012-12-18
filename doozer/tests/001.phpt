@@ -7,11 +7,7 @@ Check for doozer presence
 if (!class_exists("Doozer")) {
     exit();
 }
-$doozer = new Doozer('127.0.0.1', 8046, array());
-
-if (!method_exists($doozer, 'getDir')) {
-    exit();    
-}
+$doozer = new Doozer();
 $info = doozer_info();
 if (isset($info['version'])) {
     echo $info['version'];   

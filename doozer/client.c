@@ -1,3 +1,5 @@
+#ifndef _DZ_CLIENT_C
+#define _DZ_CLIENT_C
 
 #include <stdio.h>
 #include <sys/socket.h>
@@ -17,6 +19,53 @@
 #define TIMEVAL struct timeval
 #define TIMEOUT const TIMEVAL *
 
+/* {{{ private functions */
+int _doozer_send(int sockfd, const Doozer__Request *req) {
+    int sended, l, nl;
+    l = doozer__request__get_packed_size(req);
+    nl = ntohl(l);
+    if ((sended = send(sockfd, &nl, 4, 0)) == DOOZER_ERR) {
+        return DOOZER_ERR;
+    }
+    uint8_t buf[l];
+    doozer__request__pack(req, buf); 
+    if ((sended = send(sockfd, buf, l, 0)) == DOOZER_ERR) {
+        return DOOZER_ERR;
+    }
+    return sended;
+}
+
+int _doozer_recv(int sockfd, Doozer__Response **resp) {
+    int l, nl;
+    l = recv(sockfd, &nl, 4, 0);
+    if (l != 4) {
+        return DOOZER_ERR;
+    }
+    nl = htonl(nl);
+    void *buf = malloc(nl);
+    l = recv(sockfd, buf, nl, 0);
+    if (l != nl) {
+        return DOOZER_ERR;
+    }
+    *resp = doozer__response__unpack(NULL, l, buf);
+    free(buf);
+    return l;
+}
+
+int _doozer_invoke(int sockfd, Doozer__Request *req, Doozer__Response **resp) {
+    req->has_tag = 1; req->tag = 0;
+    if (_doozer_send(sockfd, req) == DOOZER_ERR) {
+        return DOOZER_ERR;
+    }
+    if (_doozer_recv(sockfd, resp) ==  DOOZER_ERR) {
+        return DOOZER_ERR;
+    }
+    if ((*resp)->has_err_code) {
+        return (*resp)->err_code;
+    }
+    return DOOZER_SUCCESS;
+}
+
 void _debug_print(uint8_t *buf, ssize_t size) {
     int i;
     for (i = 0; i < size; i ++) {
@@ -24,6 +73,7 @@ void _debug_print(uint8_t *buf, ssize_t size) {
     }
     printf("\n");
 }
+/* }}} */
 
 int doozer_connect(const char *hostname, unsigned port,
         TIMEOUT rcvtimeo, TIMEOUT sndtimeo) {
@@ -223,48 +273,4 @@ int doozer_nop(int sockfd) {
     return DOOZER_SUCCESS;
 }
 
-int _doozer_invoke(int sockfd, Doozer__Request *req, Doozer__Response **resp) {
-    req->has_tag = 1; req->tag = 0;
-    if (_doozer_send(sockfd, req) == DOOZER_ERR) {
-        return DOOZER_ERR;
-    }
-    if (_doozer_recv(sockfd, resp) ==  DOOZER_ERR) {
-        return DOOZER_ERR;
-    }
-    if ((*resp)->has_err_code) {
-        return (*resp)->err_code;
-    }
-    return DOOZER_SUCCESS;
-}
-
-int _doozer_send(int sockfd, const Doozer__Request *req) {
-    int sended, l, nl;
-    l = doozer__request__get_packed_size(req);
-    nl = ntohl(l);
-    if ((sended = send(sockfd, &nl, 4, 0)) == DOOZER_ERR) {
-        return DOOZER_ERR;
-    }
-    uint8_t buf[l];
-    doozer__request__pack(req, buf); 
-    if ((sended = send(sockfd, buf, l, 0)) == DOOZER_ERR) {
-        return DOOZER_ERR;
-    }
-    return sended;
-}
-
-int _doozer_recv(int sockfd, Doozer__Response **resp) {
-    int l, nl;
-    l = recv(sockfd, &nl, 4, 0);
-    if (l != 4) {
-        return DOOZER_ERR;
-    }
-    nl = htonl(nl);
-    void *buf = malloc(nl);
-    l = recv(sockfd, buf, nl, 0);
-    if (l != nl) {
-        return DOOZER_ERR;
-    }
-    *resp = doozer__response__unpack(NULL, l, buf);
-    free(buf);
-    return l;
-}
+#endif /* _DZ_CLIENT_C */

@@ -1,8 +1,15 @@
-#ifndef _CLIENT_H
-#define _CLIENT_H
+#ifndef _DZ_CLIENT_H
+#define _DZ_CLIENT_H
 
-#include "client.c"
+#include <stdint.h>
 
+#define DOOZER_ERR -1
+#define DOOZER_SUCCESS 0
+#define DOOZER_SET 2
+#define DOOZER_GET 4
+#define BUF_SIZE 1024
+#define TIMEVAL struct timeval
+#define TIMEOUT const TIMEVAL *
 /**
  * Connect to a doozer server
  * @params: host, port, receive timeout, send timeout

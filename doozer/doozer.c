@@ -56,7 +56,6 @@ PHP_METHOD(doozer, connect) {
 
     if (zend_parse_parameters(argc TSRMLS_CC, "|s!l!a", &addr,
                 &addrlen, &lport, &params) == FAILURE) {
-        ZVAL_NULL(this);
         RETURN_FALSE;
     }
     port = (int)lport;
@@ -91,13 +90,26 @@ PHP_METHOD(doozer, connect) {
             break;
     }
     int fd = doozer_connect(addr, port, tv_sndto_p, tv_rcvto_p);
+    if (fd == DOOZER_ERR) {
+        zend_throw_exception(doozer_exception_ce_p,
+                "Can not connect to Doozer server", 0 TSRMLS_CC);
+        // TODO throw exception
+        return;
+    }
+    zend_update_property_long(Z_OBJCE_P(this), this, DZ_PP_FD,
+            strlen(DZ_PP_FD), fd TSRMLS_CC);
 }/* }}}*/
 
 /* {{{ proto Doozer::close() */
 PHP_METHOD(doozer, close) {
     if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "") == FAILURE) {
         RETURN_FALSE;
-    }  
+    }
+    zval *z_fd_p, *this = getThis();
+    z_fd_p = zend_read_property(Z_OBJCE_P(this), 
+            this, ZEND_STRL(DZ_PP_FD), ZEND_ACC_PROTECTED TSRMLS_CC);
+    int fd = Z_LVAL_P(z_fd_p);
+    doozer_close(fd);
 }/* }}} */ 
 
 /* {{{ proto Doozer::getRev() */
@@ -232,6 +244,8 @@ PHP_MINIT_FUNCTION(doozer)
     zend_class_entry doozer_ce;
     INIT_CLASS_ENTRY(doozer_ce, DOOZER_CLASS_NAME, doozer_methods);
     doozer_ce_p = zend_register_internal_class(&doozer_ce);
+    zend_declare_property_null(doozer_ce_p, DZ_PP_FD, 
+            sizeof(DZ_PP_FD), ZEND_ACC_PROTECTED TSRMLS_CC);
 
     zend_class_entry doozer_exception_ce;
     INIT_CLASS_ENTRY(doozer_exception_ce, DOOZER_EXCEPTION_CLASS_NAME, NULL);

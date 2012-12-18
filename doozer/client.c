@@ -10,14 +10,7 @@
 #include <errno.h>
 
 #include "msg.pb-c.h"
-
-#define DOOZER_ERR -1
-#define DOOZER_SUCCESS 0
-#define DOOZER_SET 2
-#define DOOZER_GET 4
-#define BUF_SIZE 1024
-#define TIMEVAL struct timeval
-#define TIMEOUT const TIMEVAL *
+#include "client.h"
 
 /* {{{ private functions */
 int _doozer_send(int sockfd, const Doozer__Request *req) {

@@ -5,13 +5,19 @@
 #include "php.h"
 #include "php_ini.h"
 #include "ext/standard/info.h"
+#include "zend_exceptions.h"
 #include "php_doozer.h"
-#include "sys/time.h"
+
+#include <sys/time.h>
+#include <string.h>
+
+#include "msg.pb-c.h"
 #include "client.h"
 
-#define DOOZER_VERSION "0.1"
-#define DOOZER_CLASS_NAME "Doozer"
-#define DOOZER_EXCEPTION_CLASS_NAME "DoozerException"
+#define DZ_VERSION_NAME "DZ_VERSION"
+#define DZ_VERSION "0.1"
+#define DZ_CLASS_NAME "Doozer"
+#define DZ_EXCEPTION_CLASS_NAME "DoozerException"
 #define DZ_PP_FD "_fd"
 
 #define DZ_SEND_TIMEOUT_NAME "DZ_SEND_TIMEOUT"
@@ -26,8 +32,22 @@
 #define DZ_DEFAULT_ADDR "127.0.0.1"
 #define DZ_DEFAULT_PORT 8046
 
+#define GET_FD(this, fd) {\
+    zval *z_fd_p = zend_read_property(Z_OBJCE_P(this), \
+            this, ZEND_STRL(DZ_PP_FD), ZEND_ACC_PROTECTED TSRMLS_CC); \
+    fd = Z_LVAL_P(z_fd_p); \
+}
+
+#define ERR_CHECK_RETURN(rt, msg) {\
+    if (rt == DOOZER_ERR) { \
+        zend_throw_exception(doozer_exception_ce_p, \
+                msg, doozer_last_errno() TSRMLS_CC); \
+        RETURN_FALSE; \
+    } \ 
+}
+
+
 /* True global resources - no need for thread safety here */
-static int le_doozer;
 static zend_class_entry *doozer_ce_p;
 static zend_class_entry *doozer_exception_ce_p;
 zend_class_entry *spl_ce_RuntimeException = NULL;
@@ -46,12 +66,12 @@ PHP_METHOD(doozer, __destruct) {
     }  
 }/* }}} */
 
-/* {{{ proto Doozer::connect([string $addr][,int port[, array $params]]) */
+/* {{{ proto void Doozer::connect([string $addr][,int port[, array $params]]) */
 PHP_METHOD(doozer, connect) {
     char * addr = NULL;
     long lport=0;
     int port, addrlen, argc = ZEND_NUM_ARGS();
-    zval *params = NULL, *this = getThis(), **z_sndto_pp, **z_rcvto_pp, **z_pconn_pp;
+    zval *params = NULL, *this = getThis(), **z_sndto_pp, **z_rcvto_pp;
     struct timeval *tv_sndto_p = NULL, *tv_rcvto_p = NULL, tv_sndto, tv_rcvto;
 
     if (zend_parse_parameters(argc TSRMLS_CC, "|s!l!a", &addr,
@@ -90,78 +110,275 @@ PHP_METHOD(doozer, connect) {
             break;
     }
     int fd = doozer_connect(addr, port, tv_sndto_p, tv_rcvto_p);
-    if (fd == DOOZER_ERR) {
-        zend_throw_exception(doozer_exception_ce_p,
-                "Can not connect to Doozer server", 0 TSRMLS_CC);
-        // TODO throw exception
-        return;
-    }
+    ERR_CHECK_RETURN(fd, "Can not connect to Doozer server");
     zend_update_property_long(Z_OBJCE_P(this), this, DZ_PP_FD,
             strlen(DZ_PP_FD), fd TSRMLS_CC);
 }/* }}}*/
 
-/* {{{ proto Doozer::close() */
+/* {{{ proto void Doozer::close() */
 PHP_METHOD(doozer, close) {
     if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "") == FAILURE) {
         RETURN_FALSE;
     }
-    zval *z_fd_p, *this = getThis();
-    z_fd_p = zend_read_property(Z_OBJCE_P(this), 
-            this, ZEND_STRL(DZ_PP_FD), ZEND_ACC_PROTECTED TSRMLS_CC);
-    int fd = Z_LVAL_P(z_fd_p);
-    doozer_close(fd);
+    zval *this = getThis();
+    int fd;
+    GET_FD(this, fd)
+        doozer_close(fd);
 }/* }}} */ 
 
-/* {{{ proto Doozer::getRev() */
+/* {{{ proto int Doozer::getRev() */
 PHP_METHOD(doozer, getRev) {
-
+    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "") == FAILURE) {
+        RETURN_FALSE;
+    }
+    zval *this = getThis();
+    int fd;
+    GET_FD(this, fd);
+    int64_t rev;
+    int rt = doozer_rev(fd, &rev);
+    ERR_CHECK_RETURN(rt, "Get revision error");
+    RETURN_LONG(rev);
 }/* }}} */ 
 
-/* {{{ proto Doozer::set(string $path, string $value, int $rev=0) */
+/* {{{ proto int Doozer::set(string $path, string $value, int $rev=0) */
 PHP_METHOD(doozer, set) {
-
+    char *path = NULL;
+    zval *val;
+    int pathlen, argc = ZEND_NUM_ARGS();
+    int64_t rev = 0;
+    if (zend_parse_parameters(argc TSRMLS_CC, "sz|l", 
+                &path, &pathlen, &val, &rev) == FAILURE) {
+        RETURN_FALSE;
+    }
+    zval *this = getThis();
+    int fd, rt;
+    GET_FD(this, fd); 
+    if ((argc != 3) || (rev <= 0)) {
+        rt = doozer_rev(fd, &rev);
+        ERR_CHECK_RETURN(rt, "Get revision error");
+    }
+    convert_to_string_ex(&val);
+    rt = doozer_set(fd, path, (uint8_t *)Z_STRVAL_P(val), Z_STRLEN_P(val), &rev);
+    ERR_CHECK_RETURN(rt, "Set value error");
+    RETURN_LONG(rev);
 }/* }}} */
 
-/* {{{ proto Doozer::get(string $path, int $rev=0) */
+/* {{{ proto array Doozer::get(string $path, int $rev=0) */
 PHP_METHOD(doozer, get) {
-
+    char *path = NULL;
+    int pathlen, argc = ZEND_NUM_ARGS();
+    int64_t rev = 0;
+    if (zend_parse_parameters(argc TSRMLS_CC, "s|l", 
+                &path, &pathlen, &rev) == FAILURE) {
+        RETURN_FALSE;
+    }
+    zval *this = getThis();
+    int fd, rt;
+    GET_FD(this, fd); 
+    if ((argc != 2) || (rev <= 0)) {
+        rt = doozer_rev(fd, &rev);
+        ERR_CHECK_RETURN(rt, "Get revision error");
+    }
+    uint8_t *val;
+    size_t vallen;
+    rt = doozer_get(fd, path, rev, &val, &vallen);
+    ERR_CHECK_RETURN(rt, "Get value error");
+    RETURN_STRINGL(val, vallen, 1);
 }/* }}} */
 
-/* {{{ proto Doozer::delete(string $path, int $rev=0) */
+/* {{{ proto void Doozer::delete(string $path, int $rev=0) */
 PHP_METHOD(doozer, delete) {
-
+    char *path = NULL;
+    int pathlen, argc = ZEND_NUM_ARGS();
+    int64_t rev = 0;
+    if (zend_parse_parameters(argc TSRMLS_CC, "s|l", 
+                &path, &pathlen, &rev) == FAILURE) {
+        RETURN_FALSE;
+    }
+    zval *this = getThis();
+    int fd, rt;
+    GET_FD(this, fd); 
+    if ((argc != 2) || (rev <= 0)) {
+        rt = doozer_rev(fd, &rev);
+        ERR_CHECK_RETURN(rt, "Get revision error");
+    }
+    rt = doozer_delete(fd, path, rev);
+    ERR_CHECK_RETURN(rt, "Delete value error");
+    RETURN_TRUE;
 }/* }}} */
 
-/* {{{ proto Doozer::getDir(string $path, int $rev=0, int $offset=0) */
+/* {{{ proto Doozer::getDir(string $path, int $offset=0, int $rev=0) */
 PHP_METHOD(doozer, getDir) {
-
+    char *path = NULL;
+    int pathlen, argc = ZEND_NUM_ARGS();
+    int64_t rev = 0;
+    int32_t offset = 0;
+    if (zend_parse_parameters(argc TSRMLS_CC, "s|ll", 
+                &path, &pathlen, &offset, &rev) == FAILURE) {
+        RETURN_FALSE;
+    }
+    zval *this = getThis();
+    int fd, rt;
+    GET_FD(this, fd); 
+    if ((argc != 3) || (rev <= 0)) {
+        rt = doozer_rev(fd, &rev);
+        ERR_CHECK_RETURN(rt, "Get revision error");
+    }
+    char *val;
+    rt = doozer_dir(fd, path, rev, offset, &val);
+    ERR_CHECK_RETURN(rt, "Get directory error");
+    RETURN_STRING(val, 1);
 }/* }}} */
 
 /* {{{ proto Doozer::getStat(string $path, int $rev=0) */
 PHP_METHOD(doozer, getStat) {
-
+    char *path = NULL;
+    int pathlen, argc = ZEND_NUM_ARGS();
+    int64_t rev = 0;
+    if (zend_parse_parameters(argc TSRMLS_CC, "s|l", 
+                &path, &pathlen, &rev) == FAILURE) {
+        RETURN_FALSE;
+    }
+    zval *this = getThis();
+    int fd, rt;
+    GET_FD(this, fd); 
+    if ((argc != 2) || (rev <= 0)) {
+        rt = doozer_rev(fd, &rev);
+        ERR_CHECK_RETURN(rt, "Get revision error");
+    }
+    int len = 0;
+    rt = doozer_stat(fd, path, &rev, &len);
+    ERR_CHECK_RETURN(rt, "Stat directory error");
+    switch(rev) {
+        case DOOZER_STAT_MISSING:
+            {
+                char *buf;
+                buf = emalloc(strlen(path) + 18);
+                sprintf(buf, "Path[%s] is missing", path);
+                zend_throw_exception(doozer_exception_ce_p, 
+                        buf, DOOZER__RESPONSE__ERR__BAD_PATH TSRMLS_CC);
+                efree(buf);
+            }
+            break;
+        case DOOZER_STAT_DIR:
+            RETURN_LONG(len);
+            break;
+        default:
+            array_init(return_value);
+            add_assoc_long(return_value, "len", len);
+            add_assoc_long(return_value, "rev", rev); 
+    }
 }/* }}} */
 
-/* {{{ proto Doozer::access(strilng $path) */
+/* {{{ proto Doozer::access(strilng $token) */
 PHP_METHOD(doozer, access) {
-
+    char *token = NULL;
+    int tklen, argc = ZEND_NUM_ARGS();
+    if (zend_parse_parameters(argc TSRMLS_CC, "s", &token, &tklen) == FAILURE) {
+        RETURN_FALSE;
+    }
+    zval *this = getThis();
+    int fd, rt;
+    GET_FD(this, fd); 
+    rt = doozer_access(fd, token);
+    ERR_CHECK_RETURN(rt, "Access error");
+    RETURN_TRUE;
 }/* }}} */
 
-/* {{{ proto Doozer::walk(strinlg $path, int $rev=0, int $offset=0) */
-PHP_METHOD(doozer, walk) {
+/* {{{ proto Doozer::getHosts(int $rev=0) */
 
-}/* }}} */
+PHPAPI void _addrport(uint8_t *val, size_t vallen, 
+        char ** addr, unsigned *port) {
+    addr = &val; 
+    int i;
+    for(i = 0; i < vallen; i ++) {
+        uint8_t *end = val + i;
+        if(end[0] == ':') {
+            end[0] = '\0';
+        }
+    }
+    char portstr[6];
+    memcpy(portstr, (void **)&val[i], vallen - i);
+    portstr[5] = '\0';
+    unsigned _port = atoi(portstr);
+    port = &_port;
+}
 
-/* {{{ proto Doozer::getHosts() */
 PHP_METHOD(doozer, getHosts) {
-
+    int64_t rev = 0, noderev = 0;
+    int argc = ZEND_NUM_ARGS();
+    if (zend_parse_parameters(argc TSRMLS_CC, "|l", &rev) == FAILURE) {
+        RETURN_FALSE;
+    }
+    zval *this = getThis();
+    int fd, rt;
+    int32_t len = 0;    
+    char *subpath;
+    GET_FD(this, fd);
+    if ((argc != 1) || (rev <= 0)) {
+        rt = doozer_rev(fd, &rev);
+        ERR_CHECK_RETURN(rt, "Get revision error");
+    }
+    // /ctl/node/*
+    noderev = rev;
+    rt = doozer_stat(fd, "/ctl/node", &noderev, &len);
+    ERR_CHECK_RETURN(rt, "Stat /ctl/node error");
+    array_init(return_value);
+    printf("[%d]", len);
+    int i;
+    for(i = 0; i < len; i ++) {
+        rt = doozer_dir(fd, "/ctl/node", rev, i, &subpath);
+        printf("[%d]", doozer_last_errno());
+        ERR_CHECK_RETURN(rt, "Get directory error");
+        char *buf = emalloc(14 + strlen(subpath));
+        sprintf(buf, "/ctl/node/%s/addr", subpath);
+        uint8_t *val;
+        size_t vallen;
+        rt = doozer_get(fd, subpath, rev, &val, &vallen);
+        ERR_CHECK_RETURN(rt, "Get error");
+        efree(buf);
+        // add to return_value
+        char *addr = NULL;
+        unsigned port = 0;
+        _addrport(val, vallen, &addr, &port);
+        zval *arr;
+        array_init(arr);
+        add_assoc_string(arr, "addr", addr, strlen(addr));
+        add_assoc_long(arr, "port", port);
+        add_next_index_zval(return_value, arr);
+    }
 }/* }}} */
 
 /* {{{ proto Doozer::wait(string $path, int $rev=0) */
 PHP_METHOD(doozer, wait) {
-
+    char *path = NULL;
+    int pathlen, argc = ZEND_NUM_ARGS();
+    int64_t rev = 0;
+    if (zend_parse_parameters(argc TSRMLS_CC, "s|l", &path, &pathlen, &rev) == FAILURE) {
+        RETURN_FALSE;
+    }
+    zval *this = getThis();
+    int fd, rt;
+    GET_FD(this, fd); 
+    if ((argc != 2) || (rev <= 0)) {
+        rt = doozer_rev(fd, &rev);
+        ERR_CHECK_RETURN(rt, "Get revision error");
+    }
+    char *resppath;    
+    uint8_t *body;
+    size_t bodylen;
+    int32_t flag;
+    rt = doozer_wait(fd, path, &rev, &resppath, &body, &bodylen, &flag);
+    ERR_CHECK_RETURN(rt, "Wait error");
+    array_init(return_value);
+    add_assoc_string(return_value, "path", resppath, strlen(resppath));
+    add_assoc_string(return_value, "value", (char *)body, bodylen);
+    flag = ((flag & ( DOOZER_DEL | DOOZER_SET ) & DOOZER_DEL) == 0) ?
+        DOOZER_SET : DOOZER_DEL;
+    add_assoc_long(return_value, "flag", flag);
 }/* }}} */
 
+/* {{{ doozer_get_exception_base */
 PHPAPI zend_class_entry *doozer_get_exception_base(int root TSRMLS_DC) {
 #if HAVE_SPL
     if (!root) {
@@ -178,7 +395,7 @@ PHPAPI zend_class_entry *doozer_get_exception_base(int root TSRMLS_DC) {
     }
 #endif
     return (zend_class_entry *)zend_exception_get_default(TSRMLS_C);
-}
+}/* }}} */
 
 /* {{{ doozer_methods[]
 */
@@ -194,10 +411,8 @@ const zend_function_entry doozer_methods[] = {
         PHP_ME(doozer, getDir, NULL, ZEND_ACC_PUBLIC)
         PHP_ME(doozer, getStat, NULL, ZEND_ACC_PUBLIC)
         PHP_ME(doozer, access, NULL, ZEND_ACC_PUBLIC)
-        PHP_ME(doozer, walk, NULL, ZEND_ACC_PUBLIC)
         PHP_ME(doozer, getHosts, NULL, ZEND_ACC_PUBLIC)
         PHP_ME(doozer, wait, NULL, ZEND_ACC_PUBLIC)
-        PHP_FE(doozer_info, NULL)
         PHP_FE_END
 };
 /* }}} */
@@ -216,7 +431,7 @@ zend_module_entry doozer_module_entry = {
     PHP_RSHUTDOWN(doozer),	/* Replace with NULL if there's nothing to do at request end */
     PHP_MINFO(doozer),
 #if ZEND_MODULE_API_NO >= 20010901
-    DOOZER_VERSION,
+    DZ_VERSION,
 #endif
     STANDARD_MODULE_PROPERTIES
 };
@@ -230,6 +445,7 @@ ZEND_GET_MODULE(doozer)
     */
 PHP_MINIT_FUNCTION(doozer)
 {
+    // constants
     REGISTER_STRING_CONSTANT(DZ_SEND_TIMEOUT_NAME,
             DZ_SEND_TIMEOUT, CONST_CS | CONST_PERSISTENT);
     REGISTER_STRING_CONSTANT(DZ_RECEIVE_TIMEOUT_NAME,
@@ -240,15 +456,46 @@ PHP_MINIT_FUNCTION(doozer)
             DZ_DEFAULT_ADDR, CONST_CS | CONST_PERSISTENT);  
     REGISTER_LONG_CONSTANT(DZ_DEFAULT_PORT_NAME,
             DZ_DEFAULT_PORT, CONST_CS | CONST_PERSISTENT);  
+    REGISTER_STRING_CONSTANT(DZ_VERSION_NAME,
+            DZ_VERSION, CONST_CS | CONST_PERSISTENT);
 
+    // errno constants
+    REGISTER_LONG_CONSTANT("DZ_ERR_OTHER",
+            DOOZER__RESPONSE__ERR__OTHER, CONST_CS | CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("DZ_ERR_TAG_IN_USE",
+            DOOZER__RESPONSE__ERR__TAG_IN_USE, CONST_CS | CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("DZ_ERR_UNKNOWN_VERB",
+            DOOZER__RESPONSE__ERR__UNKNOWN_VERB, CONST_CS | CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("DZ_ERR_READONLY",
+            DOOZER__RESPONSE__ERR__READONLY, CONST_CS | CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("DZ_ERR_TOO_LATE",
+            DOOZER__RESPONSE__ERR__TOO_LATE, CONST_CS | CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("DZ_ERR_REV_MISMATCH",
+            DOOZER__RESPONSE__ERR__REV_MISMATCH, CONST_CS | CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("DZ_ERR_BAD_PATH",
+            DOOZER__RESPONSE__ERR__BAD_PATH, CONST_CS | CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("DZ_ERR_MISSING_ARG",
+            DOOZER__RESPONSE__ERR__MISSING_ARG, CONST_CS | CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("DZ_ERR_RANGE",
+            DOOZER__RESPONSE__ERR__RANGE, CONST_CS | CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("DZ_ERR_NOTDIR",
+            DOOZER__RESPONSE__ERR__NOTDIR, CONST_CS | CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("DZ_ERR_ISDIR",
+            DOOZER__RESPONSE__ERR__ISDIR, CONST_CS | CONST_PERSISTENT);
+    REGISTER_LONG_CONSTANT("DZ_ERR_NOENT",
+            DOOZER__RESPONSE__ERR__NOENT, CONST_CS | CONST_PERSISTENT);
+
+    // class Doozer
     zend_class_entry doozer_ce;
-    INIT_CLASS_ENTRY(doozer_ce, DOOZER_CLASS_NAME, doozer_methods);
+    INIT_CLASS_ENTRY(doozer_ce, DZ_CLASS_NAME, doozer_methods);
     doozer_ce_p = zend_register_internal_class(&doozer_ce);
     zend_declare_property_null(doozer_ce_p, DZ_PP_FD, 
             sizeof(DZ_PP_FD), ZEND_ACC_PROTECTED TSRMLS_CC);
 
+    // class DoozerException
     zend_class_entry doozer_exception_ce;
-    INIT_CLASS_ENTRY(doozer_exception_ce, DOOZER_EXCEPTION_CLASS_NAME, NULL);
+    INIT_CLASS_ENTRY(doozer_exception_ce, DZ_EXCEPTION_CLASS_NAME,
+            NULL);
     doozer_exception_ce_p = zend_register_internal_class_ex(
             &doozer_exception_ce,
             doozer_get_exception_base(0 TSRMLS_CC),
@@ -289,16 +536,6 @@ PHP_MINFO_FUNCTION(doozer)
     php_info_print_table_start();
     php_info_print_table_header(2, "doozer support", "enabled");
     php_info_print_table_end();
-}
-/* }}} */
-
-
-/* {{{ proto string doozer_info()
-   Return a string to confirm that the module is compiled in */
-PHP_FUNCTION(doozer_info)
-{
-    array_init(return_value);
-    add_assoc_string(return_value, "version", DOOZER_VERSION, strlen(DOOZER_VERSION));
 }
 /* }}} */
 

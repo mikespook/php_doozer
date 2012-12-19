@@ -6,7 +6,9 @@
 #define DOOZER_ERR -1
 #define DOOZER_SUCCESS 0
 #define DOOZER_SET 2
-#define DOOZER_GET 4
+#define DOOZER_DEL 4
+#define DOOZER_STAT_MISSING 0
+#define DOOZER_STAT_DIR -2
 #define BUF_SIZE 1024
 #define TIMEVAL struct timeval
 #define TIMEOUT const TIMEVAL *

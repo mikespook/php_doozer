@@ -28,5 +28,5 @@ if test "$PHP_DOOZER" != "no"; then
     PHP_EVAL_LIBLINE($PROTOBUF_DIR, DOOZER_SHARED_LIBADD)
     PHP_ADD_LIBRARY_WITH_PATH(protobufc, $PROTOBUF_DIR/$PHP_LIBDIR, DOOZER_SHARED_LIBADD)
     PHP_NEW_EXTENSION(doozer, msg.pb-c.c client.c doozer.c, $ext_shared)
-    CFLAGS="$CFLAGS -Wall -g"
+    CFLAGS="$CFLAGS -Wall -g -lprotobuf-c"
 fi

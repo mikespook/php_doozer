@@ -287,23 +287,6 @@ PHP_METHOD(doozer, access) {
 
 /* {{{ proto Doozer::getHosts(int $rev=0) */
 
-PHPAPI void _addrport(uint8_t *val, size_t vallen, 
-        char ** addr, unsigned *port) {
-    addr = &val; 
-    int i;
-    for(i = 0; i < vallen; i ++) {
-        uint8_t *end = val + i;
-        if(end[0] == ':') {
-            end[0] = '\0';
-        }
-    }
-    char portstr[6];
-    memcpy(portstr, (void **)&val[i], vallen - i);
-    portstr[5] = '\0';
-    unsigned _port = atoi(portstr);
-    port = &_port;
-}
-
 PHP_METHOD(doozer, getHosts) {
     int64_t rev = 0, noderev = 0;
     int argc = ZEND_NUM_ARGS();
@@ -324,26 +307,31 @@ PHP_METHOD(doozer, getHosts) {
     rt = doozer_stat(fd, "/ctl/node", &noderev, &len);
     ERR_CHECK_RETURN(rt, "Stat /ctl/node error");
     array_init(return_value);
-    printf("[%d]", len);
     int i;
     for(i = 0; i < len; i ++) {
         rt = doozer_dir(fd, "/ctl/node", rev, i, &subpath);
-        printf("[%d]", doozer_last_errno());
         ERR_CHECK_RETURN(rt, "Get directory error");
-        char *buf = emalloc(14 + strlen(subpath));
+        char buf[14 + strlen(subpath)];
         sprintf(buf, "/ctl/node/%s/addr", subpath);
         uint8_t *val;
         size_t vallen;
-        rt = doozer_get(fd, subpath, rev, &val, &vallen);
+        rt = doozer_get(fd, buf, rev, &val, &vallen);
         ERR_CHECK_RETURN(rt, "Get error");
-        efree(buf);
         // add to return_value
-        char *addr = NULL;
-        unsigned port = 0;
-        _addrport(val, vallen, &addr, &port);
+        int j;
+        uint8_t *end;
+        for(j = 0; j < vallen; j ++) {
+            end = val + j;
+            if(end[0] == ':') {
+                end[0] = '\0';
+                break;
+            }
+        }
+        unsigned port = atoi(end + 1);
         zval *arr;
+        ALLOC_INIT_ZVAL(arr);
         array_init(arr);
-        add_assoc_string(arr, "addr", addr, strlen(addr));
+        add_assoc_string(arr, "addr", val, strlen(val));
         add_assoc_long(arr, "port", port);
         add_next_index_zval(return_value, arr);
     }

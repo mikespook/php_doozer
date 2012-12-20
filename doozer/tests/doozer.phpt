@@ -50,10 +50,9 @@ try {
 }
 
 testmsg($doozer->access('foobar'));
-
-var_dump($doozer->getHosts());
-
+testmsg($doozer->getHosts());
 $doozer->close();
+echo 'END';
 ?>
 --EXPECT--
 21
@@ -67,3 +66,4 @@ ctl
 6
 1
 Array
+END

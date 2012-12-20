@@ -38,6 +38,14 @@
     fd = Z_LVAL_P(z_fd_p); \
 }
 
+#define ERR_CHECK_THROW(rt, msg) {\
+    if (rt == DOOZER_ERR) { \
+        zend_throw_exception(doozer_exception_ce_p, \
+                msg, doozer_last_errno() TSRMLS_CC); \
+        return; \
+    } \ 
+}
+
 #define ERR_CHECK_RETURN(rt, msg) {\
     if (rt == DOOZER_ERR) { \
         zend_throw_exception(doozer_exception_ce_p, \
@@ -46,6 +54,12 @@
     } \ 
 }
 
+#define GET_REV(argc, num, rev, fd, rt) { \
+    if ((argc != num) || (rev <= 0)) { \
+        rt = doozer_rev(fd, &rev); \
+        ERR_CHECK_RETURN(rt, "Get revision error"); \
+    } \
+}
 
 /* True global resources - no need for thread safety here */
 static zend_class_entry *doozer_ce_p;
@@ -152,11 +166,8 @@ PHP_METHOD(doozer, set) {
     }
     zval *this = getThis();
     int fd, rt;
-    GET_FD(this, fd); 
-    if ((argc != 3) || (rev <= 0)) {
-        rt = doozer_rev(fd, &rev);
-        ERR_CHECK_RETURN(rt, "Get revision error");
-    }
+    GET_FD(this, fd);
+    GET_REV(argc, 3, rev, fd, rt);
     convert_to_string_ex(&val);
     rt = doozer_set(fd, path, (uint8_t *)Z_STRVAL_P(val), Z_STRLEN_P(val), &rev);
     ERR_CHECK_RETURN(rt, "Set value error");
@@ -174,11 +185,8 @@ PHP_METHOD(doozer, get) {
     }
     zval *this = getThis();
     int fd, rt;
-    GET_FD(this, fd); 
-    if ((argc != 2) || (rev <= 0)) {
-        rt = doozer_rev(fd, &rev);
-        ERR_CHECK_RETURN(rt, "Get revision error");
-    }
+    GET_FD(this, fd);
+    GET_REV(argc, 2, rev, fd, rt);
     uint8_t *val;
     size_t vallen;
     rt = doozer_get(fd, path, rev, &val, &vallen);
@@ -197,11 +205,8 @@ PHP_METHOD(doozer, delete) {
     }
     zval *this = getThis();
     int fd, rt;
-    GET_FD(this, fd); 
-    if ((argc != 2) || (rev <= 0)) {
-        rt = doozer_rev(fd, &rev);
-        ERR_CHECK_RETURN(rt, "Get revision error");
-    }
+    GET_FD(this, fd);
+    GET_REV(argc, 2, rev, fd, rt);
     rt = doozer_delete(fd, path, rev);
     ERR_CHECK_RETURN(rt, "Delete value error");
     RETURN_TRUE;
@@ -219,11 +224,8 @@ PHP_METHOD(doozer, getDir) {
     }
     zval *this = getThis();
     int fd, rt;
-    GET_FD(this, fd); 
-    if ((argc != 3) || (rev <= 0)) {
-        rt = doozer_rev(fd, &rev);
-        ERR_CHECK_RETURN(rt, "Get revision error");
-    }
+    GET_FD(this, fd);
+    GET_REV(argc, 3, rev, fd, rt);
     char *val;
     rt = doozer_dir(fd, path, rev, offset, &val);
     ERR_CHECK_RETURN(rt, "Get directory error");
@@ -242,10 +244,7 @@ PHP_METHOD(doozer, getStat) {
     zval *this = getThis();
     int fd, rt;
     GET_FD(this, fd); 
-    if ((argc != 2) || (rev <= 0)) {
-        rt = doozer_rev(fd, &rev);
-        ERR_CHECK_RETURN(rt, "Get revision error");
-    }
+    GET_REV(argc, 2, rev, fd, rt);
     int len = 0;
     rt = doozer_stat(fd, path, &rev, &len);
     ERR_CHECK_RETURN(rt, "Stat directory error");
@@ -298,10 +297,7 @@ PHP_METHOD(doozer, getHosts) {
     int32_t len = 0;    
     char *subpath;
     GET_FD(this, fd);
-    if ((argc != 1) || (rev <= 0)) {
-        rt = doozer_rev(fd, &rev);
-        ERR_CHECK_RETURN(rt, "Get revision error");
-    }
+    GET_REV(argc, 1, rev, fd, rt);
     // /ctl/node/*
     noderev = rev;
     rt = doozer_stat(fd, "/ctl/node", &noderev, &len);
@@ -331,10 +327,83 @@ PHP_METHOD(doozer, getHosts) {
         zval *arr;
         ALLOC_INIT_ZVAL(arr);
         array_init(arr);
-        add_assoc_string(arr, "addr", val, strlen(val));
+        add_assoc_stringl(arr, "addr", val, strlen(val), 1);
         add_assoc_long(arr, "port", port);
         add_next_index_zval(return_value, arr);
     }
+}/* }}} */
+
+/* {{{ proto Doozer::walk(string $path, int $rev=0) */
+void _visit_file(int fd, char *path, int64_t rev, zval **array) {
+    uint8_t *val;
+    size_t vallen;
+    int rt = doozer_get(fd, path, rev, &val, &vallen);
+    ERR_CHECK_THROW(rt, "Visit file error");
+    add_assoc_stringl(*array, path, val, vallen, 1);
+}
+
+void _visit_dir(int fd, char *path, int64_t rev, int32_t offset, zval ** array) {
+    char *val;
+    int rt = doozer_dir(fd, path, rev, offset, &val);
+    ERR_CHECK_THROW(rt, "Get directory error");
+    int buflen;
+    char *format;
+    if (strcmp(path, "/") == 0) {
+        buflen = 1 + strlen(val);
+        format = "%s%s";
+    } else {
+        buflen = 1 + strlen(val) + strlen(path);
+        format = "%s/%s"; 
+    }
+    char buf[buflen];
+    sprintf(buf, format, path, val);
+    _step(fd, buf, rev, array);
+}
+
+void _step(int fd, char *path, int64_t rev, zval **array) {
+    int len = 0;
+    int64_t noderev = rev;
+    int rt = doozer_stat(fd, path, &noderev, &len);
+    ERR_CHECK_THROW(rt, "Stat directory error");
+    switch(noderev) {
+        case DOOZER_STAT_MISSING:
+            {
+                char *buf;
+                buf = emalloc(strlen(path) + 18);
+                sprintf(buf, "Path[%s] is missing", path);
+                zend_throw_exception(doozer_exception_ce_p, 
+                        buf, DOOZER__RESPONSE__ERR__BAD_PATH TSRMLS_CC);
+                efree(buf);
+            }
+            break;
+        case DOOZER_STAT_DIR:
+            {
+                int i;
+                for(i = 0; i < len; i ++) {
+                    _visit_dir(fd, path, rev, i, array);
+                }
+            }
+            break;
+        default:
+            _visit_file(fd, path, rev, array);
+            break;
+    }
+}
+
+PHP_METHOD(doozer, walk) {
+    char *path = NULL;
+    int pathlen, argc = ZEND_NUM_ARGS();
+    int64_t rev = 0;
+    if (zend_parse_parameters(argc TSRMLS_CC, "s|l", 
+                &path, &pathlen, &rev) == FAILURE) {
+        RETURN_FALSE;
+    }
+    zval *this = getThis();
+    int fd, rt;
+    GET_FD(this, fd);
+    GET_REV(argc, 2, rev, fd, rt);
+    array_init(return_value);
+    _step(fd, path, rev, &return_value);
 }/* }}} */
 
 /* {{{ proto Doozer::wait(string $path, int $rev=0) */
@@ -347,11 +416,8 @@ PHP_METHOD(doozer, wait) {
     }
     zval *this = getThis();
     int fd, rt;
-    GET_FD(this, fd); 
-    if ((argc != 2) || (rev <= 0)) {
-        rt = doozer_rev(fd, &rev);
-        ERR_CHECK_RETURN(rt, "Get revision error");
-    }
+    GET_FD(this, fd);
+    GET_REV(argc, 2, rev, fd, rt);
     char *resppath;    
     uint8_t *body;
     size_t bodylen;
@@ -359,8 +425,8 @@ PHP_METHOD(doozer, wait) {
     rt = doozer_wait(fd, path, &rev, &resppath, &body, &bodylen, &flag);
     ERR_CHECK_RETURN(rt, "Wait error");
     array_init(return_value);
-    add_assoc_string(return_value, "path", resppath, strlen(resppath));
-    add_assoc_string(return_value, "value", (char *)body, bodylen);
+    add_assoc_stringl(return_value, "path", resppath, strlen(resppath), 1);
+    add_assoc_stringl(return_value, "value", (char *)body, bodylen, 1);
     flag = ((flag & ( DOOZER_DEL | DOOZER_SET ) & DOOZER_DEL) == 0) ?
         DOOZER_SET : DOOZER_DEL;
     add_assoc_long(return_value, "flag", flag);
@@ -400,6 +466,7 @@ const zend_function_entry doozer_methods[] = {
         PHP_ME(doozer, getStat, NULL, ZEND_ACC_PUBLIC)
         PHP_ME(doozer, access, NULL, ZEND_ACC_PUBLIC)
         PHP_ME(doozer, getHosts, NULL, ZEND_ACC_PUBLIC)
+        PHP_ME(doozer, walk, NULL, ZEND_ACC_PUBLIC) 
         PHP_ME(doozer, wait, NULL, ZEND_ACC_PUBLIC)
         PHP_FE_END
 };

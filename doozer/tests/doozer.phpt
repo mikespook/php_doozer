@@ -51,6 +51,9 @@ try {
 
 testmsg($doozer->access('foobar'));
 testmsg($doozer->getHosts());
+
+testmsg($doozer->walk('/'));
+
 $doozer->close();
 echo 'END';
 ?>
@@ -65,5 +68,6 @@ ctl
 3
 6
 1
+Array
 Array
 END

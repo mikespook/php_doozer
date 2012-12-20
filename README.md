@@ -10,6 +10,35 @@ Dependencies
 
 [Protobuf-C](http://code.google.com/p/protobuf-c/)
 
+Usage
+=====
+
+```php
+$doozer = new Doozer();
+$doozer->connect('127.0.0.1', 8046, array(DZ_SEND_TIMEOUT => 3000, DZ_RECEIVE_TIMEOUT => 3000));
+$rev = $doozer->getRev();
+try {
+    echo $doozer->get('/');
+} catch(DoozerException $e) {
+    echo "Can not call get() with a dir.\n";
+}
+echo $doozer->set('/test', 'foobar');
+echo $doozer->get('/test');
+echo $doozer->delete('/test');
+echo $doozer->getDir('/');
+var_dump($doozer->getStat('/ctl/cal/0'));
+var_dump($doozer->getStat('/ctl'));
+try {
+    echo $doozer->getStat('/not/exists');
+} catch(DoozerException $e) {
+    echo "The path is not exist.\n"
+}
+echo $doozer->access('foobar');
+var_dump($doozer->getHosts());
+var_dump($doozer->walk('/'));
+$doozer->close();
+```
+
 Authors
 =======
 Xing Xing <mikespook@gmail.com>

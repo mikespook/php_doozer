@@ -14,28 +14,44 @@ Usage
 =====
 
 ```php
+// Get a new instance
 $doozer = new Doozer();
+// Connect to the specified doozer server
 $doozer->connect('127.0.0.1', 8046, array(DZ_SEND_TIMEOUT => 3000, DZ_RECEIVE_TIMEOUT => 3000));
+// Get the current revision
 $rev = $doozer->getRev();
+// Get on a directory will cause an exception
 try {
     echo $doozer->get('/');
 } catch(DoozerException $e) {
     echo "Can not call get() with a dir.\n";
 }
+// Set a string to a file
 echo $doozer->set('/test', 'foobar');
+// Get some words form a file
 echo $doozer->get('/test');
+// Remove a file
 echo $doozer->delete('/test');
-echo $doozer->getDir('/');
+// Get the subpath from a directory by a offset
+echo $doozer->getDir('/', 1);
+// check the sate for a path
+// if the path is a file, return an array with revision and length
 var_dump($doozer->getStat('/ctl/cal/0'));
+// if the path is a directory, return length
 var_dump($doozer->getStat('/ctl'));
+// if the path does not exist, throw an exception
 try {
     echo $doozer->getStat('/not/exists');
 } catch(DoozerException $e) {
     echo "The path is not exist.\n"
 }
+// Access doozer with a token
 echo $doozer->access('foobar');
+// Get all of available hosts
 var_dump($doozer->getHosts());
+// Walk through a path
 var_dump($doozer->walk('/'));
+// Close the connection
 $doozer->close();
 ```
 
